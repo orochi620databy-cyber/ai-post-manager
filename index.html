@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>AI Creative Workflow Manager</title>
+  <style>
+    :root { --bg:#0b1020; --card:#151b2f; --muted:#94a3b8; --text:#e2e8f0; --accent:#22d3ee; --border:#334155; }
+    *{box-sizing:border-box} body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--text)}
+    .wrap{max-width:980px;margin:0 auto;padding:12px 12px 90px}
+    h1{font-size:1.2rem;margin:8px 0 12px}
+    .tabs{display:flex;gap:8px;overflow:auto;padding-bottom:8px;position:sticky;top:0;background:linear-gradient(var(--bg),var(--bg));z-index:2}
+    .tab-btn{border:1px solid var(--border);background:#0f172a;color:var(--text);padding:8px 10px;border-radius:999px;white-space:nowrap;font-size:.82rem}
+    .tab-btn.active{background:var(--accent);color:#042f2e;border-color:transparent;font-weight:700}
+    .panel{display:none;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px;margin-top:10px}
+    .panel.active{display:block}
+    .grid{display:grid;gap:10px}
+    @media(min-width:820px){.grid.two{grid-template-columns:1fr 1fr}}
+    label{font-size:.82rem;color:var(--muted);display:block;margin-bottom:4px}
+    input,textarea,select{width:100%;padding:10px;border-radius:10px;border:1px solid var(--border);background:#0b1327;color:var(--text);font-size:16px}
+    textarea{min-height:88px;resize:vertical}
+    .btns{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+    button{border:none;border-radius:10px;padding:10px 12px;font-weight:600;font-size:.9rem}
+    .primary{background:var(--accent);color:#042f2e}.secondary{background:#1e293b;color:var(--text)}
+    .output{margin-top:10px}
+    .small{font-size:.78rem;color:var(--muted)}
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <h1>AI Creative Workflow Manager (APIなし / iPhone Safari対応)</h1>
+  <div id="tabs" class="tabs"></div>
+  <div id="panels"></div>
+</div>
+<script>
+const TABS=[
+  {id:'gpt1',name:'GPT1 Prompt Director',fields:[['project','プロジェクト名'],['goal','最終ゴール'],['target','ターゲット'],['tone','トーン'],['constraints','制約'],['references','参考情報'],['deliverables','出力物']],sys:'あなたはPrompt Directorです。要件を構造化し、改善案と最終版プロンプトを提示してください。'},
+  {id:'gpt2',name:'GPT2 Image Quality Editor',fields:[['imageType','画像タイプ'],['currentIssues','現在の問題点'],['style','スタイル'],['lighting','ライティング'],['composition','構図'],['retouch','補正方針'],['negative','避けたい要素']],sys:'あなたはImage Quality Editorです。画質改善、構図改善、ネガティブ指定を具体化してください。'},
+  {id:'gpt3',name:'GPT3 Caption Writer',fields:[['platform','プラットフォーム'],['theme','テーマ'],['hook','フック'],['value','価値提案'],['cta','CTA'],['hashtags','ハッシュタグ候補'],['bannedWords','禁止ワード']],sys:'あなたはCaption Writerです。複数の文体でキャプション案を作成してください。'},
+  {id:'gpt4',name:'GPT4 SonoVision Planner',fields:[['concept','企画コンセプト'],['scene','シーン構成'],['audio','音の方針'],['voice','ナレーション方針'],['timing','尺・タイミング'],['assets','必要素材'],['risk','リスク・注意点']],sys:'あなたはSonoVision Plannerです。映像と音の統合プランを段階的に作成してください。'},
+  {id:'gpt5',name:'GPT5 Weekly Analyst',fields:[['period','分析期間'],['kpi','主要KPI'],['wins','良かった点'],['losses','課題'],['hypothesis','仮説'],['actions','次週アクション'],['questions','深掘り質問']],sys:'あなたはWeekly Analystです。週次レビューと改善アクションを定量/定性で整理してください。'},
+  {id:'gpt6',name:'GPT6 Product Planner',fields:[['productVision','プロダクトビジョン'],['userProblem','ユーザー課題'],['persona','ペルソナ'],['features','機能案'],['priority','優先順位'],['roadmap','ロードマップ'],['metrics','成功指標']],sys:'あなたはProduct Plannerです。要件定義、優先順位、実行計画を明確化してください。'},
+  {id:'starter',name:'Starter Templates',custom:'starter'},
+  {id:'logs',name:'Logs',custom:'logs'}
+];
+
+const state=JSON.parse(localStorage.getItem('acwm_state')||'{}');
+const tabsEl=document.getElementById('tabs'); const panelsEl=document.getElementById('panels');
+
+function esc(s){return (s||'').replace(/[&<>\"]/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[m]));}
+
+function buildStandard(tab){
+  const vals=state[tab.id]||{};
+  const fields=tab.fields.map(([k,l])=>`<div><label>${l}</label><textarea data-tab="${tab.id}" data-key="${k}">${esc(vals[k]||'')}</textarea></div>`).join('');
+  return `<div class="grid two">${fields}</div>
+  <div class="btns"><button class="primary" data-act="template" data-tab="${tab.id}">詳細テンプレ生成</button><button class="secondary" data-act="tsv" data-tab="${tab.id}">TSV生成</button><button class="secondary" data-act="copy" data-target="out-${tab.id}">コピー</button></div>
+  <div class="output"><label>出力</label><textarea id="out-${tab.id}">${esc((state.outputs||{})[tab.id]||'')}</textarea></div>`;
+}
+
+function starterPanel(){
+  const temp=`【画像投稿テンプレ】\n1) 目的\n2) ターゲット\n3) 訴求ポイント\n4) 画像指示\n5) キャプション\n6) CTA\n\n【週次レビュー】\n- KPI\n- 学び\n- 次アクション`;
+  return `<p class="small">ChatGPTに貼る初期テンプレ集。必要に応じて編集して利用してください。</p>
+  <div class="btns"><button class="secondary" data-act="copyText" data-text="${encodeURIComponent(temp)}">テンプレをコピー</button></div>
+  <div class="output"><textarea id="starter-text">${esc(temp)}</textarea></div>`;
+}
+
+function logsPanel(){
+  const logs=(state.logs||[]).map(x=>`- ${x}`).join('\n');
+  return `<p class="small">操作ログ（ローカル保存）</p>
+  <div class="btns"><button class="secondary" data-act="clearLogs">ログをクリア</button><button class="secondary" data-act="copy" data-target="log-box">ログをコピー</button></div>
+  <textarea id="log-box">${esc(logs)}</textarea>`;
+}
+
+function render(){
+  tabsEl.innerHTML=TABS.map((t,i)=>`<button class="tab-btn ${i===0?'active':''}" data-open="${t.id}">${t.name}</button>`).join('');
+  panelsEl.innerHTML=TABS.map((t,i)=>`<section id="p-${t.id}" class="panel ${i===0?'active':''}">${t.custom==='starter'?starterPanel():t.custom==='logs'?logsPanel():buildStandard(t)}</section>`).join('');
+}
+
+function save(){localStorage.setItem('acwm_state',JSON.stringify(state));}
+function log(msg){state.logs=state.logs||[]; state.logs.unshift(`${new Date().toLocaleString()} ${msg}`); state.logs=state.logs.slice(0,200); save();}
+function copyById(id){const el=document.getElementById(id);el.select();document.execCommand('copy');}
+
+function generateTemplate(tab){
+  const vals=state[tab.id]||{};
+  const lines=tab.fields.map(([k,l],idx)=>`${idx+1}. ${l}: ${vals[k]||''}`).join('\n');
+  return `# ${tab.name}\n${tab.sys}\n\n## 入力情報\n${lines}\n\n## 依頼内容\n- 改善案を3案\n- 最終版を1案\n- 実行手順を箇条書き\n- 注意点を列挙`;
+}
+function generateTSV(tab){
+  const vals=state[tab.id]||{};
+  const headers=['tab','field_key','field_label','value'];
+  const rows=tab.fields.map(([k,l])=>[tab.name,k,l,(vals[k]||'').replace(/\t/g,' ').replace(/\n/g,' / ')]);
+  return [headers.join('\t'),...rows.map(r=>r.join('\t'))].join('\n');
+}
+
+render();
+
+document.addEventListener('click',e=>{
+  const b=e.target.closest('button'); if(!b) return;
+  if(b.dataset.open){
+    document.querySelectorAll('.tab-btn').forEach(x=>x.classList.toggle('active',x===b));
+    document.querySelectorAll('.panel').forEach(p=>p.classList.toggle('active',p.id===`p-${b.dataset.open}`));
+    return;
+  }
+  const act=b.dataset.act;
+  if(act==='template'||act==='tsv'){
+    const tab=TABS.find(t=>t.id===b.dataset.tab); state.outputs=state.outputs||{};
+    state.outputs[tab.id]=act==='template'?generateTemplate(tab):generateTSV(tab);
+    document.getElementById(`out-${tab.id}`).value=state.outputs[tab.id];
+    log(`${tab.name}: ${act} 生成`); save();
+  } else if(act==='copy'){
+    copyById(b.dataset.target); log(`${b.dataset.target} をコピー`);
+  } else if(act==='copyText'){
+    const text=decodeURIComponent(b.dataset.text); navigator.clipboard?.writeText(text) || (function(){const t=document.createElement('textarea');t.value=text;document.body.appendChild(t);t.select();document.execCommand('copy');t.remove();})();
+    log('Starter template をコピー');
+  } else if(act==='clearLogs'){
+    state.logs=[]; save(); document.getElementById('log-box').value='';
+  }
+});
+
+document.addEventListener('input',e=>{
+  const t=e.target; if(!t.dataset.tab||!t.dataset.key) return;
+  state[t.dataset.tab]=state[t.dataset.tab]||{}; state[t.dataset.tab][t.dataset.key]=t.value; save();
+});
+</script>
+</body>
+</html>
